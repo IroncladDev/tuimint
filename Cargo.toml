@@ -1,0 +1,13 @@
+[package]
+name = "tuimint"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fedimint-api-client = "0.9.1"
+fedimint-client = "0.9.1"
+fedimint-core = "0.9.1"
+fedimint-cursed-redb = "0.9.1"
+fedimint-mint-client = "0.9.1"
+fedimint-wallet-client = "0.9.1"
+tokio = "1.48.0"
