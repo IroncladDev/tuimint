@@ -1,14 +1,14 @@
 use fedimint_bip39::{Bip39RootSecretStrategy, Mnemonic};
 use fedimint_client::{
-    OperationId, RootSecret, module::oplog::UpdateStreamOrOutcome, secret::RootSecretStrategy,
+    OperationId, RootSecret, secret::RootSecretStrategy,
 };
 use futures::StreamExt;
 use serde::Serialize;
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{fmt::Display, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 use fedimint_api_client::api::net::Connector;
 use fedimint_client::{Client, ClientBuilder, ClientHandleArc};
-use fedimint_core::{Amount, db::Database, invite_code::InviteCode, util::NextOrPending};
+use fedimint_core::{Amount, db::Database, invite_code::InviteCode};
 use fedimint_cursed_redb::MemAndRedb;
 use fedimint_mint_client::{
     MintClientInit, MintClientModule, OOBNotes, SelectNotesWithAtleastAmount,
@@ -30,6 +30,12 @@ pub enum WalletError {
     MissingModule,
     SpendError,
     InvalidNotes,
+}
+
+impl Display for WalletError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +90,7 @@ impl Wallet {
         Ok(db)
     }
 
-    async fn load_or_generate_mnemonic(&self) -> Result<Mnemonic, WalletError> {
+    pub async fn load_or_generate_mnemonic(&self) -> Result<Mnemonic, WalletError> {
         if let Some(db) = &self.db {
             Ok(
                 if let Ok(entropy) = Client::load_decodable_client_secret::<Vec<u8>>(db).await {
