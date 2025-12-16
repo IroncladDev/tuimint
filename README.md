@@ -51,4 +51,3 @@ Nice-to-have
 - lightning
 - (maybe) use BDK for converting msats to sats
 - (maybe) use open time lib (install it just to troll)
-
