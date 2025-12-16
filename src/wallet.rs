@@ -1,7 +1,5 @@
 use fedimint_bip39::{Bip39RootSecretStrategy, Mnemonic};
-use fedimint_client::{
-    OperationId, RootSecret, secret::RootSecretStrategy,
-};
+use fedimint_client::{OperationId, RootSecret, secret::RootSecretStrategy};
 use futures::StreamExt;
 use serde::Serialize;
 use std::{fmt::Display, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
@@ -205,6 +203,17 @@ impl Wallet {
         }
 
         Ok(oob_notes.total_amount())
+    }
+
+    pub async fn show_mnemonic(&self) -> Result<Vec<String>, WalletError> {
+        let mnemonic = self.load_or_generate_mnemonic().await?;
+        let mut words: Vec<String> = Vec::new();
+
+        for word in mnemonic.words() {
+            words.push(word.to_string());
+        }
+
+        Ok(words)
     }
 }
 

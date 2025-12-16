@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
     Frame, Terminal,
 };
-use std::io;
+use std::{fmt::Display, io};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
     execute,
@@ -23,6 +23,8 @@ pub enum AppState {
     Wallet,
     SendModal,
     ReceiveModal,
+    ReceivingModal,
+    MnemonicModal,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +32,16 @@ pub enum AppMessage {
     Info(String),
     Success(String),
     Error(String),
+}
+
+impl Display for AppMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AppMessage::Info(msg) => write!(f, "Info: {}", msg),
+            AppMessage::Success(msg) => write!(f, "Success: {}", msg),
+            AppMessage::Error(msg) => write!(f, "Error: {}", msg),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +54,10 @@ pub struct App {
     receive_input: String,
     message: Option<AppMessage>,
     wallet_loaded: bool,
+    sent_notes: Option<String>,
+    show_sent_modal: bool,
+    mnemonic_phrase: Option<String>,
+    receiving_status: Option<String>,
 }
 
 impl App {
@@ -55,6 +71,10 @@ impl App {
             receive_input: String::new(),
             message: None,
             wallet_loaded: false,
+            sent_notes: None,
+            show_sent_modal: false,
+            mnemonic_phrase: None,
+            receiving_status: None,
         }
     }
 
@@ -76,8 +96,8 @@ impl App {
     }
 
     pub async fn handle_key(&mut self, key: KeyEvent) {
-        // Clear messages on any key press except ESC
-        if key.code != KeyCode::Esc {
+        // Clear messages on any key press except ESC and 'c' (for copy)
+        if key.code != KeyCode::Esc && !(key.code == KeyCode::Char('c') && self.show_sent_modal) {
             self.message = None;
         }
 
@@ -107,24 +127,51 @@ impl App {
                         self.message = None;
                     }
                     KeyCode::Char('e') => self.export_keys().await,
+                    KeyCode::Char('b') => {
+                        if let Ok(new_balance) = self.wallet.balance().await {
+                            self.balance = new_balance;
+                            self.message = Some(AppMessage::Success("Balance refreshed!".to_string()));
+                        } else {
+                            self.message = Some(AppMessage::Error("Failed to refresh balance".to_string()));
+                        }
+                    }
+                    KeyCode::Char('q') => std::process::exit(0),
                     _ => {}
                 }
             }
             AppState::SendModal => {
-                match key.code {
-                    KeyCode::Char(c) => {
-                        if c.is_ascii_digit() {
-                            self.send_amount.push(c);
+                if self.show_sent_modal {
+                    match key.code {
+                        KeyCode::Esc => {
+                            self.show_sent_modal = false;
+                            self.sent_notes = None;
+                            self.state = AppState::Wallet;
+                            self.message = None;
                         }
-                    }
-                    KeyCode::Backspace => { self.send_amount.pop(); }
-                    KeyCode::Enter => {
-                        if !self.send_amount.is_empty() {
-                            self.send_ecash().await;
+                        KeyCode::Char('c') => {
+                            if let Some(notes) = self.sent_notes.clone() {
+                                self.wl_copy(&notes);
+                                self.message = Some(AppMessage::Success("Ecash notes copied to clipboard!".to_string()));
+                            }
                         }
+                        _ => {}
                     }
-                    KeyCode::Esc => self.state = AppState::Wallet,
-                    _ => {}
+                } else {
+                    match key.code {
+                        KeyCode::Char(c) => {
+                            if c.is_ascii_digit() {
+                                self.send_amount.push(c);
+                            }
+                        }
+                        KeyCode::Backspace => { self.send_amount.pop(); }
+                        KeyCode::Enter => {
+                            if !self.send_amount.is_empty() {
+                                self.send_ecash().await;
+                            }
+                        }
+                        KeyCode::Esc => self.state = AppState::Wallet,
+                        _ => {}
+                    }
                 }
             }
             AppState::ReceiveModal => {
@@ -137,6 +184,24 @@ impl App {
                         }
                     }
                     KeyCode::Esc => self.state = AppState::Wallet,
+                    _ => {}
+                }
+            }
+            AppState::MnemonicModal => {
+                match key.code {
+                    KeyCode::Esc => {
+                        self.state = AppState::Wallet;
+                        self.mnemonic_phrase = None;
+                    }
+                    _ => {}
+                }
+            }
+            AppState::ReceivingModal => {
+                match key.code {
+                    KeyCode::Esc => {
+                        self.state = AppState::Wallet;
+                        self.receiving_status = None;
+                    }
                     _ => {}
                 }
             }
@@ -171,8 +236,14 @@ impl App {
             let sats = Amount::from_sats(amount);
             
             match self.wallet.spend_ecash(sats).await {
-                Ok((_, _notes)) => {
-                    self.message = Some(AppMessage::Success(format!("Sent {} SATS successfully!", amount)));
+                Ok((_, notes)) => {
+                    // Update balance after successful send
+                    if let Ok(new_balance) = self.wallet.balance().await {
+                        self.balance = new_balance;
+                    }
+                    self.sent_notes = Some(notes.to_string());
+                    self.show_sent_modal = true;
+                    self.message = Some(AppMessage::Success(format!("Generated {} SATS ecash notes!", amount)));
                 }
                 Err(_) => {
                     self.message = Some(AppMessage::Error("Failed to send ecash".to_string()));
@@ -186,27 +257,50 @@ impl App {
     async fn receive_ecash(&mut self) {
         let notes = self.receive_input.clone();
         
+        // Clear input and show receiving modal
+        self.receive_input.clear();
+        self.state = AppState::ReceivingModal;
+        self.receiving_status = Some("Receiving ecash notes...".to_string());
+        
         match self.wallet.receive_ecash(&notes).await {
             Ok(amount) => {
-                match self.wallet.balance().await {
-                    Ok(new_balance) => {
-                        self.balance = new_balance;
-                        self.message = Some(AppMessage::Success(format!("Received {} sats successfully!", amount.sats_f64() as u64)));
-                    }
-                    Err(_) => {
-                        self.message = Some(AppMessage::Error("Failed to update balance after receiving".to_string()));
-                    }
+                // Update balance after successful receive
+                if let Ok(new_balance) = self.wallet.balance().await {
+                    self.balance = new_balance;
                 }
+                self.receiving_status = Some(format!("Successfully received {} sats!", amount.sats_f64() as u64));
             }
-            Err(_) => {
-                self.message = Some(AppMessage::Error("Failed to receive ecash".to_string()));
+            Err(e) => {
+                self.receiving_status = Some(format!("Failed to receive ecash: {:?}", e));
             }
         }
     }
 
     async fn export_keys(&mut self) {
-        todo!("Implement export keys functionality - needs load_or_generate_mnemonic to be public");
+        if self.wallet_loaded {
+            match self.wallet.show_mnemonic().await {
+                Ok(words) => {
+                    let mnemonic = words.join(" ");
+                    self.mnemonic_phrase = Some(mnemonic);
+                    self.state = AppState::MnemonicModal;
+                }
+                Err(_) => {
+                    self.message = Some(AppMessage::Error("Failed to get seed phrase".to_string()));
+                }
+            }
+        } else {
+            self.message = Some(AppMessage::Error("No wallet loaded".to_string()));
+        }
     }
+
+    fn wl_copy(&self, text: &str) {
+        use std::process::Command;
+        
+        // Fire and forget - don't care if it works
+        let _ = Command::new("wl-copy").arg(text).spawn();
+    }
+
+
 
     pub async fn update_balance(&mut self) -> Result<(), WalletError> {
         if self.wallet_loaded {
@@ -279,7 +373,7 @@ fn draw_wallet(f: &mut Frame, app: &App) {
         .alignment(ratatui::layout::Alignment::Center);
     f.render_widget(balance, chunks[0]);
 
-    let actions = Paragraph::new("Press 's' to Send | Press 'r' to Receive | Press 'e' to Export Keys")
+    let actions = Paragraph::new("Press 's' to Send | Press 'r' to Receive | Press 'b' to Refresh Balance | Press 'e' to Export Keys")
         .style(Style::default().fg(Color::Cyan))
         .block(Block::default().borders(Borders::ALL).title("Actions"))
         .alignment(ratatui::layout::Alignment::Center);
@@ -292,36 +386,70 @@ fn draw_wallet(f: &mut Frame, app: &App) {
 }
 
 fn draw_send_modal(f: &mut Frame, app: &App) {
-    let area = centered_rect(60, 40, f.area());
+    let area = centered_rect(80, 60, f.area());
     f.render_widget(Clear, area);
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Length(3),
-        ])
-        .margin(1)
-        .split(area);
+    if app.show_sent_modal {
+        // Show ecash notes modal
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(10),
+                Constraint::Length(5),
+            ])
+            .margin(1)
+            .split(area);
 
-    let title = Paragraph::new("Send Ecash")
-        .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-        .block(Block::default().borders(Borders::ALL))
-        .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(title, chunks[0]);
+        let title = Paragraph::new("Ecash Notes Generated")
+            .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+            .block(Block::default().borders(Borders::ALL))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(title, chunks[0]);
 
-    let input_text = format!("Amount (sats): {}", app.send_amount);
-    let input = Paragraph::new(input_text)
-        .style(Style::default().fg(Color::White))
-        .block(Block::default().borders(Borders::ALL).title("Enter SATS Amount"))
-        .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(input, chunks[1]);
+        if let Some(notes) = &app.sent_notes {
+            let notes_display = Paragraph::new(notes.as_str())
+                .style(Style::default().fg(Color::White))
+                .block(Block::default().borders(Borders::ALL).title("OOB Notes"))
+                .wrap(ratatui::widgets::Wrap { trim: true })
+                .alignment(ratatui::layout::Alignment::Left);
+            f.render_widget(notes_display, chunks[1]);
+        }
 
-    let help = Paragraph::new("Enter amount in SATS and press Enter | ESC to go back")
-        .style(Style::default().fg(Color::Gray))
-        .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(help, chunks[2]);
+        let help = Paragraph::new("Press 'c' to copy to clipboard | ESC to go back")
+            .style(Style::default().fg(Color::Gray))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(help, chunks[2]);
+    } else {
+        // Show amount input modal
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Length(3),
+            ])
+            .margin(1)
+            .split(area);
+
+        let title = Paragraph::new("Send Ecash")
+            .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+            .block(Block::default().borders(Borders::ALL))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(title, chunks[0]);
+
+        let input_text = format!("Amount (sats): {}", app.send_amount);
+        let input = Paragraph::new(input_text)
+            .style(Style::default().fg(Color::White))
+            .block(Block::default().borders(Borders::ALL).title("Enter SATS Amount"))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(input, chunks[1]);
+
+        let help = Paragraph::new("Enter amount in SATS and press Enter | ESC to go back")
+            .style(Style::default().fg(Color::Gray))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(help, chunks[2]);
+    }
 
     if let Some(message) = &app.message {
         let message_area = centered_rect(50, 20, f.area());
@@ -335,7 +463,7 @@ fn draw_send_modal(f: &mut Frame, app: &App) {
         
         let message_paragraph = Paragraph::new(message.to_string())
             .style(style)
-            .block(Block::default().borders(Borders::ALL).title("Send Status"))
+            .block(Block::default().borders(Borders::ALL).title("Status"))
             .alignment(ratatui::layout::Alignment::Center);
         f.render_widget(message_paragraph, message_area);
     }
@@ -399,6 +527,41 @@ fn draw_receive_modal(f: &mut Frame, app: &App) {
     }
 }
 
+fn draw_mnemonic_modal(f: &mut Frame, app: &App) {
+    let area = centered_rect(80, 60, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(5),
+            Constraint::Length(3),
+        ])
+        .margin(1)
+        .split(area);
+
+    let title = Paragraph::new("Seed Phrase")
+        .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .block(Block::default().borders(Borders::ALL))
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(title, chunks[0]);
+
+    if let Some(phrase) = &app.mnemonic_phrase {
+        let phrase_display = Paragraph::new(phrase.as_str())
+            .style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+            .block(Block::default().borders(Borders::ALL).title("12 Word Mnemonic"))
+            .alignment(ratatui::layout::Alignment::Center)
+            .wrap(ratatui::widgets::Wrap { trim: true });
+        f.render_widget(phrase_display, chunks[1]);
+    }
+
+    let help = Paragraph::new("IMPORTANT: Write this down! Store it safely. ESC to go back")
+        .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(help, chunks[2]);
+}
+
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -416,17 +579,49 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage(percent_x),
             Constraint::Percentage((100 - percent_x) / 2),
         ])
-        .split(popup_layout[1])[1]
+    .split(popup_layout[1])[1]
 }
 
-impl std::fmt::Display for AppMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AppMessage::Info(msg) => write!(f, "{}", msg),
-            AppMessage::Success(msg) => write!(f, "{}", msg),
-            AppMessage::Error(msg) => write!(f, "{}", msg),
-        }
+fn draw_receiving_modal(f: &mut Frame, app: &App) {
+    let area = centered_rect(60, 40, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+        ])
+        .margin(1)
+        .split(area);
+
+    let title = Paragraph::new("Receiving Ecash")
+        .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .block(Block::default().borders(Borders::ALL))
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(title, chunks[0]);
+
+    if let Some(status) = &app.receiving_status {
+        let status_style = if status.contains("Successfully") {
+            Style::default().fg(Color::Green)
+        } else if status.contains("Failed") {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default().fg(Color::Blue)
+        };
+
+        let status_paragraph = Paragraph::new(status.to_string())
+            .style(status_style)
+            .block(Block::default().borders(Borders::ALL).title("Status"))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(status_paragraph, chunks[1]);
     }
+
+    let help = Paragraph::new("ESC to go back")
+        .style(Style::default().fg(Color::Gray))
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(help, chunks[2]);
 }
 
 fn draw(f: &mut Frame, app: &App) {
@@ -440,6 +635,14 @@ fn draw(f: &mut Frame, app: &App) {
         AppState::ReceiveModal => {
             draw_wallet(f, app);
             draw_receive_modal(f, app);
+        }
+        AppState::MnemonicModal => {
+            draw_wallet(f, app);
+            draw_mnemonic_modal(f, app);
+        }
+        AppState::ReceivingModal => {
+            draw_wallet(f, app);
+            draw_receiving_modal(f, app);
         }
     }
 }
@@ -459,18 +662,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     loop {
-        // Update balance periodically
-        if let Err(_) = app.update_balance().await {
-            // Handle balance update error if needed
-        }
-
         terminal.draw(|f| draw(f, &app))?;
 
-        if let Event::Key(key) = event::read()? {
-            if key.code == KeyCode::Char('q') {
-                break;
+        match event::read() {
+            Ok(Event::Key(key)) => {
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                    break;
+                }
+                app.handle_key(key).await;
             }
-            app.handle_key(key).await;
+            Ok(_) => {
+                // Ignore other events
+            }
+            Err(e) => {
+                // Log error but continue running
+                eprintln!("Event read error: {:?}", e);
+                continue;
+            }
         }
     }
 
