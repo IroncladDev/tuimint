@@ -51,3 +51,20 @@ Nice-to-have
 - lightning
 - (maybe) use BDK for converting msats to sats
 - (maybe) use open time lib (install it just to troll)
+
+## TODO
+
+- Clean up vibe coded slop and start anew
+    - Framerate to support animations
+- Clean up Wallet contructor
+    - Creation/new logic
+- Support multiple federations
+- Support switching
+- Lightning (maybe)
+- QR Codes (maybe)
+- Animated Ecash Codes (possibly never)
+
+### To learn
+
+- How to use db
+- Ratatui stuff

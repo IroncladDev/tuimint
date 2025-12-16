@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+color-eyre = "0.6.5"
 crossterm = "0.29.0"
+dirs = "6.0.0"
 fedimint-api-client = "0.9.1"
 fedimint-bip39 = "0.9.1"
 fedimint-client = "0.9.1"
