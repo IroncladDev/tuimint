@@ -1,15 +1,22 @@
-use std::str::FromStr;
+use std::{
+    collections::BTreeMap,
+    str::FromStr,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use fedimint_bip39::{Bip39RootSecretStrategy, Mnemonic};
-use fedimint_client::{Client, RootSecret, secret::RootSecretStrategy};
+use fedimint_client::{Client, ClientHandleArc, RootSecret, secret::RootSecretStrategy};
 use fedimint_core::{
-    db::{Database, IDatabaseTransactionOpsCoreTyped},
-    invite_code::InviteCode,
+    config::FederationId,
+    db::{Database, DatabaseTransaction, IDatabaseTransactionOpsCoreTyped},
+    invite_code::{self, InviteCode},
 };
 use fedimint_cursed_redb::MemAndRedb;
+use fedimint_mint_client::config;
+use futures::StreamExt;
 
 use crate::{
-    database::{FederationConfig, FederationIdKey},
+    database::{FederationConfig, FederationIdKey, FederationIdKeyPrefix},
     types::{Error, Result, Wallet},
 };
 use rand::thread_rng;
@@ -18,8 +25,7 @@ use rand::thread_rng;
 
 #[derive(Debug)]
 pub struct Wallets {
-    wallets: Vec<Wallet>,
-    active_wallet_id: Option<String>,
+    pub clients: Arc<Mutex<BTreeMap<FederationId, ClientHandleArc>>>,
     db: Database,
 }
 
@@ -40,8 +46,7 @@ impl Wallets {
             let db = Database::new(cursed_db, Default::default());
 
             Ok(Wallets {
-                wallets: Vec::new(),
-                active_wallet_id: None,
+                clients: Arc::new(Mutex::new(BTreeMap::new())),
                 db,
             })
         } else {
@@ -49,52 +54,75 @@ impl Wallets {
         }
     }
 
-    pub async fn get_active_wallet(&mut self) -> Option<&Wallet> {
-        self.wallets.iter().find(|wallet| {
-            if let Some(id) = &self.active_wallet_id {
-                return wallet.federation_id.id.to_string() == *id;
-            }
-            false
-        })
+    pub fn get_clients(&self) -> Result<MutexGuard<'_, BTreeMap<FederationId, ClientHandleArc>>> {
+        if let Ok(clients) = self.clients.lock() {
+            Ok(clients)
+        } else {
+            // TODO: fix later
+            Err(Error::DBLoadError)
+        }
     }
 
-    // pub async fn switch(&mut self, federation: FederationIdKey) {}
+    pub fn get_client_by_id(&self, id: FederationId) -> Result<ClientHandleArc> {
+        self.get_clients()?.get(&id).cloned().ok_or(Error::DBLoadError)
+    }
+
+    pub async fn load_configs(&mut self) -> Result<()> {
+        let mut dbtx = self.db.begin_transaction_nc().await;
+        let configs = dbtx
+            .find_by_prefix(&FederationIdKeyPrefix)
+            .await
+            .collect::<BTreeMap<FederationIdKey, FederationConfig>>()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let secret = self.mnemonic_secret().await?;
+
+        for config in &configs {
+            let id = config.invite_code.federation_id();
+            if let Ok(wallet) =
+                Wallet::from_opened(id, secret.clone()).await
+            {
+                self.get_clients()?.insert(id, wallet.client);
+            }
+        }
+
+        Ok(())
+    }
 
     pub async fn join(&mut self, invite_code: &str) -> Result<()> {
         let secret = self.mnemonic_secret().await?;
-        let wallet = Wallet::from_joined(invite_code, secret).await?;
+        let invite = InviteCode::from_str(invite_code).map_err(|_| Error::InvalidInviteCode)?;
+        let wallet = Wallet::from_joined(&invite, secret).await?;
         let invite_code =
             InviteCode::from_str(invite_code).map_err(|_| Error::InvalidInviteCode)?;
-        let id_str = wallet.federation_id.id.to_string();
-
         let config = FederationConfig { invite_code };
         let id = config.invite_code.federation_id();
         let mut dbtx = self.db.begin_transaction().await;
+
         dbtx.insert_entry(&FederationIdKey { id }, &config).await;
         dbtx.commit_tx_result()
             .await
             .map_err(|_| Error::DBLoadError)?;
 
-        self.wallets.push(wallet);
-        self.active_wallet_id = Some(id_str.clone());
+        self.get_clients()?
+            .insert(config.invite_code.federation_id(), wallet.client);
 
         println!("{}", id.clone());
 
         Ok(())
     }
 
-    pub async fn open(&mut self, federation_id: FederationIdKey) -> Result<()> {
-        let secret = self.mnemonic_secret().await?;
-        let wallet = Wallet::from_opened(federation_id, secret).await?;
-        let id = wallet.federation_id.id.to_string();
-
-        self.wallets.push(wallet);
-        self.active_wallet_id = Some(id.clone());
-
-        println!("{}", id.clone());
-
-        Ok(())
-    }
+    // pub async fn open(&mut self, federation_id: FederationId) -> Result<()> {
+    //     let secret = self.mnemonic_secret().await?;
+    //     let wallet = Wallet::from_opened(federation_id, secret).await?;
+    //
+    //     // println!("{}", id.clone());
+    //
+    //     Ok(())
+    // }
 
     // async fn save(mut dbtx: DatabaseTransaction<'_, Committable>) {}
 

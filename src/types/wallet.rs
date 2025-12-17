@@ -4,13 +4,10 @@ use futures::StreamExt;
 use serde::Serialize;
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use crate::{
-    database::FederationIdKey,
-    types::{Error, Result, WalletError},
-};
+use crate::types::{Error, Result, WalletError};
 use fedimint_api_client::api::net::Connector;
 use fedimint_client::{Client, ClientBuilder, ClientHandleArc};
-use fedimint_core::{Amount, db::Database, invite_code::InviteCode};
+use fedimint_core::{Amount, config::FederationId, db::Database, invite_code::InviteCode};
 use fedimint_mint_client::{
     MintClientInit, MintClientModule, OOBNotes, SelectNotesWithAtleastAmount,
 };
@@ -18,8 +15,8 @@ use fedimint_wallet_client::WalletClientInit;
 
 #[derive(Debug, Clone)]
 pub struct Wallet {
-    pub federation_id: FederationIdKey,
-    client: ClientHandleArc,
+    pub federation_id: FederationId,
+    pub client: ClientHandleArc,
     db: Database,
 }
 
@@ -38,10 +35,10 @@ impl Wallet {
         Ok(builder)
     }
 
-    async fn load_database(id: &str) -> Result<Database> {
+    async fn load_database(federation_id: FederationId) -> Result<Database> {
         if let Some(db_dir) = dirs::data_local_dir() {
             let db_path = db_dir.join("tuimint/");
-            let db_file = db_path.join(format!("{}.db", id));
+            let db_file = db_path.join(format!("{}.db", federation_id.to_string()));
 
             let _ = tokio::fs::create_dir_all(&db_path).await;
             let cursed_db = MemAndRedb::new(db_file)
@@ -55,13 +52,12 @@ impl Wallet {
         }
     }
 
-    pub async fn from_joined(invite_code: &str, secret: RootSecret) -> Result<Wallet> {
+    pub async fn from_joined(invite_code: &InviteCode, secret: RootSecret) -> Result<Wallet> {
         let builder = Wallet::build().await?;
 
-        let invite = InviteCode::from_str(invite_code).map_err(|_| Error::InvalidInviteCode)?;
-        let db = Wallet::load_database(&invite.federation_id().to_string()).await?;
+        let db = Wallet::load_database(invite_code.federation_id()).await?;
         let client = builder
-            .preview(&invite)
+            .preview(&invite_code)
             .await
             .map_err(|_| Error::Wallet(WalletError::PreviewError))?
             .join(db.clone(), secret)
@@ -69,17 +65,16 @@ impl Wallet {
             .map_err(|_| Error::Wallet(WalletError::JoinError))?;
 
         Ok(Wallet {
-            federation_id: FederationIdKey {
-                id: invite.federation_id(),
-            },
+            federation_id: client.federation_id(),
+
             client: Arc::new(client),
             db: db.clone(),
         })
     }
 
-    pub async fn from_opened(federation_id: FederationIdKey, secret: RootSecret) -> Result<Wallet> {
+    pub async fn from_opened(federation_id: FederationId, secret: RootSecret) -> Result<Wallet> {
         let builder = Wallet::build().await?;
-        let db = Wallet::load_database(&federation_id.id.to_string()).await?;
+        let db = Wallet::load_database(federation_id).await?;
         let client = builder
             .open(db.clone(), secret)
             .await
