@@ -4,7 +4,7 @@ use futures::StreamExt;
 use serde::Serialize;
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use crate::types::{Error, Result, WalletError};
+use anyhow::{Context, Result, anyhow};
 use fedimint_api_client::api::net::Connector;
 use fedimint_client::{Client, ClientBuilder, ClientHandleArc};
 use fedimint_core::{Amount, config::FederationId, db::Database, invite_code::InviteCode};
@@ -23,8 +23,7 @@ pub struct Wallet {
 impl Wallet {
     async fn build() -> Result<ClientBuilder> {
         let mut builder = Client::builder()
-            .await
-            .map_err(|_| Error::Wallet(WalletError::BuildError))?
+            .await?
             .with_iroh_enable_next(true)
             .with_iroh_enable_dht(true);
 
@@ -43,12 +42,12 @@ impl Wallet {
             let _ = tokio::fs::create_dir_all(&db_path).await;
             let cursed_db = MemAndRedb::new(db_file)
                 .await
-                .map_err(|_| Error::DBLoadError)?;
+                .context("failed to initialize redb database")?;
             let db = Database::new(cursed_db, Default::default());
 
             Ok(db)
         } else {
-            Err(Error::DBLoadError)
+            Err(anyhow!("Could not locate local data dir"))
         }
     }
 
@@ -58,11 +57,9 @@ impl Wallet {
         let db = Wallet::load_database(invite_code.federation_id()).await?;
         let client = builder
             .preview(&invite_code)
-            .await
-            .map_err(|_| Error::Wallet(WalletError::PreviewError))?
+            .await?
             .join(db.clone(), secret)
-            .await
-            .map_err(|_| Error::Wallet(WalletError::JoinError))?;
+            .await?;
 
         Ok(Wallet {
             federation_id: client.federation_id(),
@@ -75,10 +72,7 @@ impl Wallet {
     pub async fn from_opened(federation_id: FederationId, secret: RootSecret) -> Result<Wallet> {
         let builder = Wallet::build().await?;
         let db = Wallet::load_database(federation_id).await?;
-        let client = builder
-            .open(db.clone(), secret)
-            .await
-            .map_err(|_| Error::Wallet(WalletError::OpenError))?;
+        let client = builder.open(db.clone(), secret).await?;
 
         Ok(Wallet {
             federation_id,
@@ -99,7 +93,7 @@ impl Wallet {
         let mint = self
             .client
             .get_first_module::<MintClientModule>()
-            .map_err(|_| Error::MissingModule)?;
+            .context("failed to get mint module")?;
 
         mint.spend_notes_with_selector(
             &SelectNotesWithAtleastAmount,
@@ -109,30 +103,29 @@ impl Wallet {
             NoMeta {},
         )
         .await
-        .map_err(|_| Error::SpendError)
     }
 
     pub async fn receive_ecash(&mut self, notes: &str) -> Result<Amount> {
         let mint = self
             .client
             .get_first_module::<MintClientModule>()
-            .map_err(|_| Error::MissingModule)?;
+            ?;
 
-        let oob_notes = OOBNotes::from_str(notes).map_err(|_| Error::InvalidNotes)?;
+        let oob_notes = OOBNotes::from_str(notes)?;
         let operation_id = mint
             .reissue_external_notes(oob_notes.clone(), NoMeta {})
             .await
-            .map_err(|_| Error::InvalidNotes)?;
+            ?;
 
         let mut updates = mint
             .subscribe_reissue_external_notes(operation_id)
             .await
-            .map_err(|_| Error::InvalidNotes)?
+            ?
             .into_stream();
 
         while let Some(update) = updates.next().await {
-            if let fedimint_mint_client::ReissueExternalNotesState::Failed(_) = update {
-                return Err(Error::InvalidNotes);
+            if let fedimint_mint_client::ReissueExternalNotesState::Failed(e) = update {
+                return Err(anyhow!("failed to reissue ecash notes: {e}"));
             }
         }
 

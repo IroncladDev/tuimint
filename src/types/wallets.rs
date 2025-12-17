@@ -1,3 +1,4 @@
+use anyhow::{Result, anyhow};
 use std::{
     collections::BTreeMap,
     str::FromStr,
@@ -8,16 +9,15 @@ use fedimint_bip39::{Bip39RootSecretStrategy, Mnemonic};
 use fedimint_client::{Client, ClientHandleArc, RootSecret, secret::RootSecretStrategy};
 use fedimint_core::{
     config::FederationId,
-    db::{Database, DatabaseTransaction, IDatabaseTransactionOpsCoreTyped},
-    invite_code::{self, InviteCode},
+    db::{Database, IDatabaseTransactionOpsCoreTyped},
+    invite_code::InviteCode,
 };
 use fedimint_cursed_redb::MemAndRedb;
-use fedimint_mint_client::config;
 use futures::StreamExt;
 
 use crate::{
     database::{FederationConfig, FederationIdKey, FederationIdKeyPrefix},
-    types::{Error, Result, Wallet},
+    types::Wallet,
 };
 use rand::thread_rng;
 
@@ -40,9 +40,7 @@ impl Wallets {
             let db_file = db_path.join("tuimint.db");
 
             let _ = tokio::fs::create_dir_all(&db_path).await;
-            let cursed_db = MemAndRedb::new(db_file)
-                .await
-                .map_err(|_| Error::DBLoadError)?;
+            let cursed_db = MemAndRedb::new(db_file).await?;
             let db = Database::new(cursed_db, Default::default());
 
             Ok(Wallets {
@@ -50,7 +48,7 @@ impl Wallets {
                 db,
             })
         } else {
-            Err(Error::DBLoadError)
+            Err(anyhow!("Failed to initialize wallets db"))
         }
     }
 
@@ -58,13 +56,15 @@ impl Wallets {
         if let Ok(clients) = self.clients.lock() {
             Ok(clients)
         } else {
-            // TODO: fix later
-            Err(Error::DBLoadError)
+            Err(anyhow!("Failed to get retrieve clients"))
         }
     }
 
     pub fn get_client_by_id(&self, id: FederationId) -> Result<ClientHandleArc> {
-        self.get_clients()?.get(&id).cloned().ok_or(Error::DBLoadError)
+        self.get_clients()?
+            .get(&id)
+            .cloned()
+            .ok_or(anyhow!("Failed to get client handle with id {}", id))
     }
 
     pub async fn load_configs(&mut self) -> Result<()> {
@@ -82,9 +82,7 @@ impl Wallets {
 
         for config in &configs {
             let id = config.invite_code.federation_id();
-            if let Ok(wallet) =
-                Wallet::from_opened(id, secret.clone()).await
-            {
+            if let Ok(wallet) = Wallet::from_opened(id, secret.clone()).await {
                 self.get_clients()?.insert(id, wallet.client);
             }
         }
@@ -94,18 +92,15 @@ impl Wallets {
 
     pub async fn join(&mut self, invite_code: &str) -> Result<()> {
         let secret = self.mnemonic_secret().await?;
-        let invite = InviteCode::from_str(invite_code).map_err(|_| Error::InvalidInviteCode)?;
+        let invite = InviteCode::from_str(invite_code)?;
         let wallet = Wallet::from_joined(&invite, secret).await?;
-        let invite_code =
-            InviteCode::from_str(invite_code).map_err(|_| Error::InvalidInviteCode)?;
+        let invite_code = InviteCode::from_str(invite_code)?;
         let config = FederationConfig { invite_code };
         let id = config.invite_code.federation_id();
         let mut dbtx = self.db.begin_transaction().await;
 
         dbtx.insert_entry(&FederationIdKey { id }, &config).await;
-        dbtx.commit_tx_result()
-            .await
-            .map_err(|_| Error::DBLoadError)?;
+        dbtx.commit_tx_result().await?;
 
         self.get_clients()?
             .insert(config.invite_code.federation_id(), wallet.client);
@@ -114,17 +109,6 @@ impl Wallets {
 
         Ok(())
     }
-
-    // pub async fn open(&mut self, federation_id: FederationId) -> Result<()> {
-    //     let secret = self.mnemonic_secret().await?;
-    //     let wallet = Wallet::from_opened(federation_id, secret).await?;
-    //
-    //     // println!("{}", id.clone());
-    //
-    //     Ok(())
-    // }
-
-    // async fn save(mut dbtx: DatabaseTransaction<'_, Committable>) {}
 
     async fn mnemonic_secret(&self) -> Result<RootSecret> {
         let mnemonic = self.load_or_generate_mnemonic().await?;
@@ -150,17 +134,12 @@ impl Wallets {
     pub async fn load_or_generate_mnemonic(&self) -> Result<Mnemonic> {
         Ok(
             if let Ok(entropy) = Client::load_decodable_client_secret::<Vec<u8>>(&self.db).await {
-                Mnemonic::from_entropy(&entropy).map_err(|_| Error::MnemonicError)?
+                Mnemonic::from_entropy(&entropy)?
             } else {
                 let mnemonic = Bip39RootSecretStrategy::<12>::random(&mut thread_rng());
-                Client::store_encodable_client_secret(&self.db, mnemonic.to_entropy())
-                    .await
-                    .map_err(|_| Error::MnemonicError)?;
+                Client::store_encodable_client_secret(&self.db, mnemonic.to_entropy()).await?;
                 mnemonic
             },
         )
     }
-
-    // pub async fn leave(&mut self, federation: FederationIdKey) {}
-    // pub async fn recover(&mut self, federation: FederationIdKey) {}
 }
