@@ -60,6 +60,10 @@ impl Wallets {
         }
     }
 
+    pub fn get_client_ids(&self) -> Result<Vec<FederationId>> {
+        Ok(self.get_clients()?.clone().into_keys().collect())
+    }
+
     pub fn get_client_by_id(&self, id: FederationId) -> Result<ClientHandleArc> {
         self.get_clients()?
             .get(&id)

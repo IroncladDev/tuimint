@@ -106,21 +106,16 @@ impl Wallet {
     }
 
     pub async fn receive_ecash(&mut self, notes: &str) -> Result<Amount> {
-        let mint = self
-            .client
-            .get_first_module::<MintClientModule>()
-            ?;
+        let mint = self.client.get_first_module::<MintClientModule>()?;
 
         let oob_notes = OOBNotes::from_str(notes)?;
         let operation_id = mint
             .reissue_external_notes(oob_notes.clone(), NoMeta {})
-            .await
-            ?;
+            .await?;
 
         let mut updates = mint
             .subscribe_reissue_external_notes(operation_id)
-            .await
-            ?
+            .await?
             .into_stream();
 
         while let Some(update) = updates.next().await {
