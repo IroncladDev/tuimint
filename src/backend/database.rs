@@ -34,5 +34,4 @@ impl_db_record!(
     value = FederationConfig,
     db_prefix = DbKeyPrefix::FederationConfig,
 );
-
 impl_db_lookup!(key = FederationIdKey, query_prefix = FederationIdKeyPrefix);

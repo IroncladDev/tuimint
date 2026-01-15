@@ -15,10 +15,7 @@ use fedimint_core::{
 use fedimint_cursed_redb::MemAndRedb;
 use futures::StreamExt;
 
-use crate::{
-    database::{FederationConfig, FederationIdKey, FederationIdKeyPrefix},
-    types::Wallet,
-};
+use crate::backend::{FederationConfig, FederationIdKey, FederationIdKeyPrefix, Wallet};
 use rand::thread_rng;
 
 // TODO: look into anyhow
