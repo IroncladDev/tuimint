@@ -3,19 +3,16 @@ mod message;
 mod state;
 mod ui;
 
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
 use backend::handle_messages;
 use color_eyre::Result;
-use color_eyre::eyre::Context;
-use crossterm::event::{self};
 use message::Message;
-use ratatui::DefaultTerminal;
-use tokio::sync::mpsc::{self, UnboundedSender};
-use ui::{handle_event, render};
+use state::AppState;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
 
-use crate::state::AppState;
+use crate::ui::{handle_events, render};
+
+pub const FRAME_RATE: u64 = 10;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,27 +23,19 @@ async fn main() -> Result<()> {
 
     let backend_state = state.clone();
 
+    // Handles messages passed from the UI to the backend
     tokio::spawn(handle_messages(rx, backend_state));
-    ratatui::run(|term| run(term, &state, tx))
-        .unwrap_or_else(|e| panic!("AAAAA exited with error: {}", e));
-
-    Ok(())
-}
-
-fn run(
-    terminal: &mut DefaultTerminal,
-    state: &Arc<Mutex<AppState>>,
-    tx: UnboundedSender<Message>,
-) -> Result<()> {
-    loop {
-        terminal.draw(|frame| render(frame, state))?;
-        if event::poll(Duration::from_millis(16))? {
-            let ev = event::read()?;
-            handle_event(ev, state, tx.clone())?;
+    ratatui::run(|terminal| -> Result<()> {
+        loop {
+            terminal.draw(|frame| render(frame, &state))?;
+            handle_events(&state, tx.clone())?;
+            if state.lock().unwrap().should_quit {
+                break;
+            }
         }
-        if state.lock().unwrap().should_quit {
-            break;
-        }
-    }
+        Ok(())
+    })
+    .unwrap_or_else(|e| panic!("TUIMint exited with error: {}", e));
+
     Ok(())
 }
