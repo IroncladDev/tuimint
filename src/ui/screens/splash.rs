@@ -1,18 +1,13 @@
+use crate::message::Message;
+use crate::state::AppState;
+use ratatui::prelude::*;
+use ratatui::widgets::*;
 use std::sync::{Arc, Mutex};
-
-use ratatui::{
-    layout::{Alignment, Constraint},
-    style::{Color, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Padding, Paragraph},
-};
 use tokio::sync::mpsc::UnboundedSender;
-
-use crate::{message::Message, state::AppState, ui::screens::UIScreen};
 
 pub struct SplashScreen {}
 
-impl UIScreen for SplashScreen {
+impl super::UIScreen for SplashScreen {
     fn render(
         frame: &mut ratatui::Frame,
         _state: &Arc<Mutex<AppState>>,
@@ -73,7 +68,9 @@ impl UIScreen for SplashScreen {
 
         let block = Block::bordered()
             .border_style(Style::new().blue())
-            .padding(Padding::vertical(1));
+            .padding(Padding::vertical(1))
+            .title_bottom(" CTRL+C to exit ")
+            .title_alignment(Alignment::Center);
         frame.render_widget(
             paragraph.clone().block(block),
             frame
