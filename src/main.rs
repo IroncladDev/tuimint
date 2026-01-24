@@ -3,66 +3,97 @@ mod message;
 mod state;
 mod ui;
 
+use anyhow::Result;
 use backend::handle_messages;
-use color_eyre::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, poll};
+use crossterm::{
+    event::{
+        DisableFocusChange, DisableMouseCapture, EnableFocusChange, EnableMouseCapture, Event,
+        KeyCode, KeyModifiers, poll, read,
+    },
+    execute,
+};
 use message::Message;
+use ratatui::Frame;
 use state::AppState;
+use state::Screen;
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc;
-
-use crate::ui::render;
+use tokio::sync::mpsc::{self, UnboundedSender};
+use ui::screens::*;
 
 pub const FRAME_RATE: u64 = 60;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    color_eyre::install()?;
+async fn main() {
+    execute!(std::io::stdout(), EnableMouseCapture, EnableFocusChange).ok();
 
     let state = Arc::new(Mutex::new(AppState::new()));
-    let (tx, rx) = mpsc::unbounded_channel::<Message>();
-    let mut last = Instant::now();
-
     let backend_state = state.clone();
+    let (tx, rx) = mpsc::unbounded_channel::<Message>();
 
     // Handles messages passed from the UI to the backend
     tokio::spawn(handle_messages(rx, backend_state));
     ratatui::run(|terminal| -> Result<()> {
+        let mut last = Instant::now();
+
         'outer: loop {
             let now = Instant::now();
-            if now.duration_since(last) >= Duration::from_millis(1000 / FRAME_RATE) {
+            let frame_time = Duration::from_millis(1000 / FRAME_RATE);
+
+            // Draw the frame at `FRAME_RATE` FPS
+            if now.duration_since(last) >= frame_time {
                 last = now;
 
-                terminal.draw(|frame| render(frame, &state, tx.clone()))?;
+                terminal.draw(|frame| render_screen(frame, &state, tx.clone()))?;
 
-                {
-                    let mut state = AppState::lock(&state)?;
-                    state.keys_typed.clear();
-                    state.modifiers_held = KeyModifiers::empty();
-                }
+                // Empty keys typed and modifiers held at the end of each frame
+                AppState::lock(&state)?
+                    .clear_keys_typed()
+                    .set_key_modifiers(KeyModifiers::empty());
             }
 
+            // Poll for events
             while poll(Duration::ZERO)? {
-                if let Event::Key(key) = crossterm::event::read()? {
-                    if key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        break 'outer;
+                match read()? {
+                    Event::Key(key) => {
+                        // Exit on Ctrl+C
+                        if key.code == KeyCode::Char('c')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            break 'outer;
+                        }
+
+                        AppState::lock(&state)?
+                            .insert_key_typed(key.code)
+                            .set_key_modifiers(key.modifiers);
                     }
-
-                    let mut state = AppState::lock(&state)?;
-
-                    state.modifiers_held = key.modifiers;
-                    state.keys_typed.insert(key.code);
+                    Event::FocusGained => {
+                        AppState::lock(&state)?.set_focus(true);
+                    }
+                    Event::FocusLost => {
+                        AppState::lock(&state)?.set_focus(false);
+                    }
+                    _ => {}
                 }
             }
         }
+
         Ok(())
     })
-    .unwrap_or_else(|e| panic!("TUIMint exited with error: {}", e));
+    .unwrap_or_else(|e| println!("TUIMint exited with error: {}", e));
 
-    Ok(())
+    execute!(std::io::stdout(), DisableMouseCapture, DisableFocusChange).ok();
+}
+
+fn render_screen(frame: &mut Frame, state: &Arc<Mutex<AppState>>, tx: UnboundedSender<Message>) {
+    let screen = state.lock().unwrap().screen;
+    match screen {
+        Screen::Splash => SplashScreen::render(frame, state, tx),
+        Screen::Join => JoinScreen::render(frame, state, tx),
+        Screen::Wallets => WalletsScreen::render(frame, state, tx),
+        Screen::Settings => SettingsScreen::render(frame, state, tx),
+        Screen::Tutorial => TutorialScreen::render(frame, state, tx),
+    }
 }

@@ -1,11 +1,13 @@
 pub mod join;
 pub mod settings;
 pub mod splash;
+pub mod tutorial;
 pub mod wallets;
 
 use std::sync::{Arc, Mutex};
 
 use crate::{message::Message, state::AppState};
+use tokio::sync::mpsc::UnboundedSender;
 
 pub trait UIScreen {
     fn render(
@@ -15,8 +17,8 @@ pub trait UIScreen {
     );
 }
 
-pub use join::*;
-pub use settings::*;
-pub use splash::*;
-use tokio::sync::mpsc::UnboundedSender;
-pub use wallets::*;
+pub use join::JoinScreen;
+pub use settings::SettingsScreen;
+pub use splash::SplashScreen;
+pub use tutorial::TutorialScreen;
+pub use wallets::WalletsScreen;
