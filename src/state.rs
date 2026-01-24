@@ -1,5 +1,6 @@
 use color_eyre::{Result, eyre::eyre};
-use std::sync::{Arc, Mutex, MutexGuard};
+use crossterm::event::{KeyCode, KeyModifiers};
+use std::{collections::HashSet, sync::{Arc, Mutex, MutexGuard}};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Screen {
@@ -9,11 +10,14 @@ pub enum Screen {
     Settings,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     pub count: i32,
     pub screen: Screen,
-    pub should_quit: bool,
+    /// Tracks keys typed by the user
+    /// Typed keys appear in this vec for a single frame
+    pub keys_typed: HashSet<KeyCode>,
+    pub modifiers_held: KeyModifiers,
 }
 
 impl AppState {
@@ -21,7 +25,8 @@ impl AppState {
         AppState {
             count: 0,
             screen: Screen::Splash,
-            should_quit: false,
+            keys_typed: HashSet::new(),
+            modifiers_held: KeyModifiers::empty(),
         }
     }
 
@@ -43,9 +48,5 @@ impl AppState {
 
     pub fn double(&mut self) {
         self.count *= 2;
-    }
-
-    pub fn quit(&mut self) {
-        self.should_quit = true;
     }
 }
