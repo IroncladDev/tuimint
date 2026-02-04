@@ -1,6 +1,7 @@
 use crate::message::Message;
 use crate::state::AppState;
 use crate::state::Screen;
+use crate::ui::Component;
 use crossterm::event::KeyCode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -9,12 +10,14 @@ use tokio::sync::mpsc::UnboundedSender;
 
 pub struct SplashScreen {}
 
-impl super::UIScreen for SplashScreen {
-    fn render(
-        frame: &mut ratatui::Frame,
-        _state: &Arc<Mutex<AppState>>,
-        _tx: UnboundedSender<Message>,
-    ) {
+impl Component for SplashScreen {
+    fn draw(&self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+        let state = state.lock().unwrap();
+
+        if state.screen != Screen::Splash {
+            return;
+        }
+
         let mut lines = vec![
             Line::from("           ⠰⣉⠆           ").style(Color::Rgb(86, 102, 130)),
             Line::from("      ⢎⡱  ⣀⠤⠤⠤⣀  ⢎⡱      ").style(Color::Rgb(86, 102, 130)),
@@ -35,7 +38,7 @@ impl super::UIScreen for SplashScreen {
             Line::from("     ⠰⣉⠆ ⠈⠒⠤⠤⠤⠒⠁ ⠰⣉⠆     ").style(Color::Rgb(86, 102, 130)),
             Line::from("         ⡔⢢   ⡔⢢         ").style(Color::Rgb(86, 102, 130)),
             Line::from("         ⠈⠁   ⠈⠁         ").style(Color::Rgb(86, 102, 130)),
-            Line::from(""),
+            Line::from(format!("{}", state.count)),
         ];
 
         lines.push(Line::from(vec![
@@ -81,11 +84,28 @@ impl super::UIScreen for SplashScreen {
         );
     }
 
-    fn handle_key_event(event: crossterm::event::KeyEvent, state: &Arc<Mutex<AppState>>) -> anyhow::Result<()> {
-        let mut state = AppState::lock(state);
+    fn handle_key_event(
+        &self,
+        event: crossterm::event::KeyEvent,
+        state: &Arc<Mutex<AppState>>,
+        _tx: UnboundedSender<Message>,
+    ) -> anyhow::Result<()> {
+        let mut state = state.lock().unwrap();
+
+        if state.screen != Screen::Splash {
+            return Ok(());
+        }
 
         if let KeyCode::Char('j') = event.code {
             state.navigate(Screen::Join);
+        }
+
+        if let KeyCode::Char('w') = event.code {
+            state.navigate(Screen::Wallets);
+        }
+
+        if let KeyCode::Char('t') = event.code {
+            state.navigate(Screen::Tutorial);
         }
 
         Ok(())

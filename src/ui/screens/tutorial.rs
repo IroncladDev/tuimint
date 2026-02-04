@@ -3,22 +3,24 @@ use std::sync::{Arc, Mutex};
 use ratatui::{
     layout::{Alignment, Constraint},
     style::{Color, Style},
-    text::{Line, Span, Text},
+    text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
-use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{message::Message, state::AppState, ui::screens::UIScreen};
+use crate::{
+    state::{AppState, Screen},
+    ui::Component,
+};
 
 pub struct TutorialScreen {}
 
-impl UIScreen for TutorialScreen {
-    fn render(
-        frame: &mut ratatui::Frame,
-        state: &Arc<Mutex<AppState>>,
-        _tx: UnboundedSender<Message>,
-    ) {
-        let mut state = state.lock().unwrap();
+impl Component for TutorialScreen {
+    fn render(&self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+        let state = state.lock().unwrap();
+
+        if state.screen != Screen::Tutorial {
+            return;
+        }
 
         let lines = vec![Line::from("Tutorial")];
 

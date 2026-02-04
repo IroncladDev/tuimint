@@ -1,18 +1,22 @@
 use std::sync::{Arc, Mutex};
 
 use ratatui::{style::Style, widgets::Block};
-use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{message::Message, state::AppState, ui::screens::UIScreen};
+use crate::{
+    state::{AppState, Screen},
+    ui::Component,
+};
 
 pub struct SettingsScreen {}
 
-impl UIScreen for SettingsScreen {
-    fn render(
-        frame: &mut ratatui::Frame,
-        _state: &Arc<Mutex<AppState>>,
-        _tx: UnboundedSender<Message>,
-    ) {
+impl Component for SettingsScreen {
+    fn render(&self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+        let state = state.lock().unwrap();
+
+        if state.screen != Screen::Settings {
+            return;
+        }
+
         let paragraph = ratatui::widgets::Paragraph::new("Settings");
         let block = Block::bordered().border_style(Style::new().green().on_white().bold().italic());
         frame.render_widget(paragraph.clone().block(block), frame.area());

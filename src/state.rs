@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Screen {
     Splash,
     Tutorial,
@@ -21,6 +21,7 @@ pub struct AppState {
     pub modifiers_held: KeyModifiers,
     pub focused: bool,
     pub quit: bool,
+    pub count: u64,
 }
 
 impl AppState {
@@ -31,11 +32,8 @@ impl AppState {
             modifiers_held: KeyModifiers::empty(),
             focused: true,
             quit: false,
+            count: 0,
         }
-    }
-
-    pub fn lock(state: &Arc<Mutex<AppState>>) -> MutexGuard<'_, AppState> {
-        state.lock().unwrap_or_else(|e| panic!("{}", e))
     }
 }
 
