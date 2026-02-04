@@ -18,6 +18,7 @@ use state::AppState;
 use state::Screen;
 use std::{
     sync::{Arc, Mutex},
+    thread::sleep,
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedSender};
@@ -35,56 +36,50 @@ async fn main() {
 
     // Handles messages passed from the UI to the backend
     tokio::spawn(handle_messages(rx, backend_state));
-    ratatui::run(|terminal| -> Result<()> {
-        let mut last = Instant::now();
 
-        'outer: loop {
-            let now = Instant::now();
-            let frame_time = Duration::from_millis(1000 / FRAME_RATE);
+    ratatui::run(|terminal| {
+        let framerate = Duration::from_millis(1000 / FRAME_RATE);
 
-            // Draw the frame at `FRAME_RATE` FPS
-            if now.duration_since(last) >= frame_time {
-                last = now;
+        loop {
+            let start = Instant::now();
 
-                terminal.draw(|frame| render_screen(frame, &state, tx.clone()))?;
+            terminal
+                .draw(|frame| render_screen(frame, &state, tx.clone()))
+                .ok();
 
-                // Empty keys typed and modifiers held at the end of each frame
-                AppState::lock(&state)?
-                    .clear_keys_typed()
-                    .set_key_modifiers(KeyModifiers::empty());
+            if let Ok(true) = poll(Duration::ZERO)
+                && let Ok(event) = read()
+            {
+                if let Event::Key(key) = event
+                    && key.code == KeyCode::Char('c')
+                    && key.modifiers.contains(KeyModifiers::CONTROL)
+                {
+                    break;
+                }
+
+                handle_events(&state, event).ok();
             }
 
-            // Poll for events
-            while poll(Duration::ZERO)? {
-                match read()? {
-                    Event::Key(key) => {
-                        // Exit on Ctrl+C
-                        if key.code == KeyCode::Char('c')
-                            && key.modifiers.contains(KeyModifiers::CONTROL)
-                        {
-                            break 'outer;
-                        }
-
-                        AppState::lock(&state)?
-                            .insert_key_typed(key.code)
-                            .set_key_modifiers(key.modifiers);
-                    }
-                    Event::FocusGained => {
-                        AppState::lock(&state)?.set_focus(true);
-                    }
-                    Event::FocusLost => {
-                        AppState::lock(&state)?.set_focus(false);
-                    }
-                    _ => {}
-                }
+            let elapsed = start.elapsed();
+            if elapsed < framerate {
+                sleep(framerate - elapsed);
             }
         }
-
-        Ok(())
-    })
-    .unwrap_or_else(|e| println!("TUIMint exited with error: {}", e));
+    });
 
     execute!(std::io::stdout(), DisableMouseCapture, DisableFocusChange).ok();
+}
+
+fn handle_events(state: &Arc<Mutex<AppState>>, event: Event) -> Result<()> {
+    let screen = state.lock().unwrap().screen;
+
+    match screen {
+        Screen::Splash => SplashScreen::handle_event(event, state),
+        Screen::Join => JoinScreen::handle_event(event, state),
+        Screen::Wallets => WalletsScreen::handle_event(event, state),
+        Screen::Settings => SettingsScreen::handle_event(event, state),
+        Screen::Tutorial => TutorialScreen::handle_event(event, state),
+    }
 }
 
 fn render_screen(frame: &mut Frame, state: &Arc<Mutex<AppState>>, tx: UnboundedSender<Message>) {

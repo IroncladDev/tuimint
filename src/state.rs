@@ -20,6 +20,7 @@ pub struct AppState {
     pub keys_typed: HashSet<KeyCode>,
     pub modifiers_held: KeyModifiers,
     pub focused: bool,
+    pub quit: bool,
 }
 
 impl AppState {
@@ -29,11 +30,12 @@ impl AppState {
             keys_typed: HashSet::new(),
             modifiers_held: KeyModifiers::empty(),
             focused: true,
+            quit: false,
         }
     }
 
-    pub fn lock(state: &Arc<Mutex<AppState>>) -> Result<MutexGuard<'_, AppState>> {
-        state.lock().map_err(|e| anyhow::anyhow!("{}", e))
+    pub fn lock(state: &Arc<Mutex<AppState>>) -> MutexGuard<'_, AppState> {
+        state.lock().unwrap_or_else(|e| panic!("{}", e))
     }
 }
 

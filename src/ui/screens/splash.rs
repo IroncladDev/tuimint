@@ -1,5 +1,7 @@
 use crate::message::Message;
 use crate::state::AppState;
+use crate::state::Screen;
+use crossterm::event::KeyCode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::sync::{Arc, Mutex};
@@ -77,5 +79,15 @@ impl super::UIScreen for SplashScreen {
                 .area()
                 .centered(Constraint::Max(60), Constraint::Max(18)),
         );
+    }
+
+    fn handle_key_event(event: crossterm::event::KeyEvent, state: &Arc<Mutex<AppState>>) -> anyhow::Result<()> {
+        let mut state = AppState::lock(state);
+
+        if let KeyCode::Char('j') = event.code {
+            state.navigate(Screen::Join);
+        }
+
+        Ok(())
     }
 }
