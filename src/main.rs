@@ -35,7 +35,7 @@ async fn main() {
     // Handles messages passed from the UI to the backend
     tokio::spawn(handle_messages(rx, backend_state));
 
-    let main = Root {};
+    let mut main = Root::new();
 
     ratatui::run(|terminal| {
         let framerate = Duration::from_millis(1000 / FRAME_RATE);

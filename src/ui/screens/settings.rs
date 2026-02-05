@@ -10,7 +10,7 @@ use crate::{
 pub struct SettingsScreen {}
 
 impl Component for SettingsScreen {
-    fn render(&self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+    fn render(&mut self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
         let state = state.lock().unwrap();
 
         if state.screen != Screen::Settings {

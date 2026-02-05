@@ -11,23 +11,33 @@ use screens::WalletsScreen;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
 
-pub struct Root {}
+pub struct Root {
+    children: Vec<Box<dyn Component>>,
+}
+
+impl Root {
+    pub fn new() -> Self {
+        Self {
+            children: vec![
+                Box::new(SplashScreen::new()),
+                Box::new(TutorialScreen {}),
+                Box::new(JoinScreen {}),
+                Box::new(WalletsScreen {}),
+                Box::new(SettingsScreen {}),
+            ]
+        }
+    }
+}
 
 impl Component for Root {
-    fn children(&self) -> Vec<Box<dyn Component>> {
-        vec![
-            Box::new(SplashScreen {}),
-            Box::new(TutorialScreen {}),
-            Box::new(JoinScreen {}),
-            Box::new(WalletsScreen {}),
-            Box::new(SettingsScreen {}),
-        ]
+    fn children(&mut self) -> &mut [Box<dyn Component>] {
+        &mut self.children
     }
 }
 
 pub trait Component {
-    fn children(&self) -> Vec<Box<dyn Component>> {
-        vec![]
+    fn children(&mut self) -> &mut [Box<dyn Component>] {
+        &mut []
     }
 
     fn draw(&self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
@@ -35,7 +45,7 @@ pub trait Component {
         let _ = state;
     }
 
-    fn render(&self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+    fn render(&mut self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
         self.draw(frame, state);
 
         for child in self.children() {
@@ -44,7 +54,7 @@ pub trait Component {
     }
 
     fn handle_event(
-        &self,
+        &mut self,
         event: Event,
         state: &Arc<Mutex<AppState>>,
         tx: UnboundedSender<Message>,
@@ -61,7 +71,7 @@ pub trait Component {
     }
 
     fn handle_key_event(
-        &self,
+        &mut self,
         event: KeyEvent,
         state: &Arc<Mutex<AppState>>,
         tx: UnboundedSender<Message>,
@@ -73,7 +83,7 @@ pub trait Component {
     }
 
     fn handle_mouse_event(
-        &self,
+        &mut self,
         event: MouseEvent,
         state: &Arc<Mutex<AppState>>,
         tx: UnboundedSender<Message>,
