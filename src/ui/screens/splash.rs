@@ -1,12 +1,7 @@
-use crate::message::Message;
-use crate::state::AppState;
 use crate::state::Screen;
-use crate::ui::Component;
-use crossterm::event::KeyCode;
+use crate::ui::prelude::*;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::UnboundedSender;
 
 pub struct SplashScreen {}
 
@@ -17,7 +12,7 @@ impl SplashScreen {
 }
 
 impl Component for SplashScreen {
-    fn draw(&self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+    fn draw(&self, frame: &mut Frame, state: &AppStateMutex) {
         let state = state.lock().unwrap();
 
         if state.screen != Screen::Splash {
@@ -90,11 +85,11 @@ impl Component for SplashScreen {
         );
     }
 
-    fn handle_key_event(
+    fn on_key_event(
         &mut self,
-        event: crossterm::event::KeyEvent,
-        state: &Arc<Mutex<AppState>>,
-        _tx: UnboundedSender<Message>,
+        event: KeyEvent,
+        state: &AppStateMutex,
+        _tx: TxSender,
     ) -> anyhow::Result<()> {
         let mut state = state.lock().unwrap();
 

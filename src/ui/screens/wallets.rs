@@ -1,16 +1,12 @@
-use std::sync::{Arc, Mutex};
-
-use ratatui::{style::Style, widgets::Block};
-
-use crate::{
-    state::{AppState, Screen},
-    ui::Component,
-};
+use crate::state::Screen;
+use crate::ui::prelude::*;
+use ratatui::prelude::*;
+use ratatui::widgets::*;
 
 pub struct WalletsScreen {}
 
 impl Component for WalletsScreen {
-    fn render(&mut self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+    fn render(&mut self, frame: &mut Frame, state: &AppStateMutex) {
         let state = state.lock().unwrap();
 
         if state.screen != Screen::Wallets {

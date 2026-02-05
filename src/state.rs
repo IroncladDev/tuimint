@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Screen {
     Splash,
@@ -30,3 +32,4 @@ impl AppState {
         self
     }
 }
+

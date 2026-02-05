@@ -1,9 +1,9 @@
 mod database;
-mod handler;
+mod handlers;
 mod wallet;
-mod wallets;
+mod client_handle;
 
 pub use database::*;
-pub use handler::*;
-pub use wallet::*;
-pub use wallets::*;
+pub use client_handle::*;
+pub use handlers::handle_messages;
+pub use wallet::Wallet;

@@ -1,21 +1,12 @@
-use std::sync::{Arc, Mutex};
-
-use ratatui::{
-    layout::{Alignment, Constraint},
-    style::{Color, Style},
-    text::{Line, Text},
-    widgets::{Block, Padding, Paragraph},
-};
-
-use crate::{
-    state::{AppState, Screen},
-    ui::Component,
-};
+use crate::state::Screen;
+use crate::ui::prelude::*;
+use ratatui::prelude::*;
+use ratatui::widgets::*;
 
 pub struct TutorialScreen {}
 
 impl Component for TutorialScreen {
-    fn render(&mut self, frame: &mut ratatui::Frame, state: &Arc<Mutex<AppState>>) {
+    fn render(&mut self, frame: &mut Frame, state: &AppStateMutex) {
         let state = state.lock().unwrap();
 
         if state.screen != Screen::Tutorial {

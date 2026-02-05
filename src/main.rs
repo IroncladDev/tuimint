@@ -2,9 +2,9 @@ mod backend;
 mod message;
 mod state;
 mod ui;
+mod types;
 
 use crate::ui::{Component, Root};
-use backend::handle_messages;
 use crossterm::event::{Event, KeyCode, KeyModifiers, poll, read};
 use message::Message;
 use state::AppState;
@@ -15,6 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
+use backend::handle_messages;
 
 pub const FRAME_RATE: u64 = 30;
 
@@ -38,7 +39,7 @@ async fn main() {
     tokio::spawn(handle_messages(rx, backend_state));
 
     // Main UI Component
-    let mut root = Root::new();
+    let mut root = Root::new(&state, tx.clone());
 
     ratatui::run(|terminal| {
         let framerate = Duration::from_millis(1000 / FRAME_RATE);

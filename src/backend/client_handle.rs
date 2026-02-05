@@ -5,6 +5,8 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
+use super::Wallet;
+use crate::backend::{FederationConfig, FederationIdKey, FederationIdKeyPrefix};
 use fedimint_bip39::{Bip39RootSecretStrategy, Mnemonic};
 use fedimint_client::{Client, ClientHandleArc, RootSecret, secret::RootSecretStrategy};
 use fedimint_core::{
@@ -14,24 +16,22 @@ use fedimint_core::{
 };
 use fedimint_cursed_redb::MemAndRedb;
 use futures::StreamExt;
-
-use crate::backend::{FederationConfig, FederationIdKey, FederationIdKeyPrefix, Wallet};
 use rand::thread_rng;
 
 // TODO: look into anyhow
 
 #[derive(Debug)]
-pub struct Wallets {
+pub struct ClientHandle {
     pub clients: Arc<Mutex<BTreeMap<FederationId, ClientHandleArc>>>,
     db: Database,
 }
 
-impl Wallets {
+impl ClientHandle {
     // Should
     // load all ids from db
     // load all wallets from ids
     // set active wallet to first wallet if any
-    pub async fn new() -> Result<Wallets> {
+    pub async fn new() -> Result<ClientHandle> {
         if let Some(db_dir) = dirs::data_local_dir() {
             let db_path = db_dir.join("tuimint/");
             let db_file = db_path.join("tuimint.db");
@@ -40,7 +40,7 @@ impl Wallets {
             let cursed_db = MemAndRedb::new(db_file).await?;
             let db = Database::new(cursed_db, Default::default());
 
-            Ok(Wallets {
+            Ok(ClientHandle {
                 clients: Arc::new(Mutex::new(BTreeMap::new())),
                 db,
             })

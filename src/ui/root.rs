@@ -1,11 +1,14 @@
-use crate::ui::{Component, screens::*};
+use super::prelude::*;
+use crate::ui::screens::*;
 
 pub struct Root {
     children: Vec<Box<dyn Component>>,
 }
 
 impl Root {
-    pub fn new() -> Self {
+    pub fn new(_state: &AppStateMutex, tx: TxSender) -> Self {
+        tx.send(Message::RefreshClients).ok();
+
         Self {
             children: vec![
                 Box::new(SplashScreen::new()),
