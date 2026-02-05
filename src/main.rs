@@ -14,6 +14,7 @@ use crossterm::{
 use message::Message;
 use state::AppState;
 use std::{
+    panic,
     sync::{Arc, Mutex},
     thread::sleep,
     time::{Duration, Instant},
@@ -28,6 +29,13 @@ pub const FRAME_RATE: u64 = 60;
 async fn main() {
     execute!(std::io::stdout(), EnableMouseCapture, EnableFocusChange).ok();
 
+    // Install a panic hook to reset the terminal in case of a panic
+    panic::set_hook(Box::new(|info| {
+        reset_terminal();
+
+        eprintln!("TUIMint panicked with error: {}", info)
+    }));
+
     let state = Arc::new(Mutex::new(AppState::new()));
     let backend_state = state.clone();
     let (tx, rx) = mpsc::unbounded_channel::<Message>();
@@ -35,7 +43,8 @@ async fn main() {
     // Handles messages passed from the UI to the backend
     tokio::spawn(handle_messages(rx, backend_state));
 
-    let mut main = Root::new();
+    // Main UI Component
+    let mut root = Root::new();
 
     ratatui::run(|terminal| {
         let framerate = Duration::from_millis(1000 / FRAME_RATE);
@@ -43,7 +52,7 @@ async fn main() {
         loop {
             let start = Instant::now();
 
-            terminal.draw(|frame| main.render(frame, &state)).ok();
+            terminal.draw(|frame| root.render(frame, &state)).ok();
 
             if let Ok(true) = poll(Duration::ZERO)
                 && let Ok(event) = read()
@@ -55,7 +64,7 @@ async fn main() {
                     break;
                 }
 
-                main.handle_event(event, &state, tx.clone()).ok();
+                root.handle_event(event, &state, tx.clone()).ok();
             }
 
             let elapsed = start.elapsed();
@@ -65,5 +74,9 @@ async fn main() {
         }
     });
 
+    reset_terminal();
+}
+
+fn reset_terminal() {
     execute!(std::io::stdout(), DisableMouseCapture, DisableFocusChange).ok();
 }
