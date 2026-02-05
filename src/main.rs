@@ -3,14 +3,9 @@ mod message;
 mod state;
 mod ui;
 
+use crate::ui::{Component, Root};
 use backend::handle_messages;
-use crossterm::{
-    event::{
-        DisableFocusChange, DisableMouseCapture, EnableFocusChange, EnableMouseCapture, Event,
-        KeyCode, KeyModifiers, poll, read,
-    },
-    execute,
-};
+use crossterm::event::{Event, KeyCode, KeyModifiers, poll, read};
 use message::Message;
 use state::AppState;
 use std::{
@@ -21,17 +16,16 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-use crate::ui::{Component, Root};
-
 pub const FRAME_RATE: u64 = 60;
 
 #[tokio::main]
 async fn main() {
-    execute!(std::io::stdout(), EnableMouseCapture, EnableFocusChange).ok();
+    // Enable mouse capture
+    // execute!(std::io::stdout(), EnableMouseCapture).ok();
 
     // Install a panic hook to reset the terminal in case of a panic
     panic::set_hook(Box::new(|info| {
-        reset_terminal();
+        // reset_terminal();
 
         eprintln!("TUIMint panicked with error: {}", info)
     }));
@@ -74,9 +68,9 @@ async fn main() {
         }
     });
 
-    reset_terminal();
+    // reset_terminal();
 }
 
-fn reset_terminal() {
-    execute!(std::io::stdout(), DisableMouseCapture, DisableFocusChange).ok();
-}
+// fn reset_terminal() {
+//     execute!(std::io::stdout(), DisableMouseCapture).ok();
+// }
