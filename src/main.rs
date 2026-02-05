@@ -16,7 +16,7 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-pub const FRAME_RATE: u64 = 60;
+pub const FRAME_RATE: u64 = 30;
 
 #[tokio::main]
 async fn main() {

@@ -3,23 +3,16 @@ use crate::state::AppState;
 use crate::state::Screen;
 use crate::ui::Component;
 use crossterm::event::KeyCode;
-use crossterm::event::KeyModifiers;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
 
-pub struct SplashScreen {
-    count: u64,
-}
+pub struct SplashScreen {}
 
 impl SplashScreen {
     pub fn new() -> Self {
-        Self { count: 0 }
-    }
-
-    pub fn increment(&mut self) {
-        self.count += 1;
+        Self {}
     }
 }
 
@@ -51,7 +44,7 @@ impl Component for SplashScreen {
             Line::from("     ⠰⣉⠆ ⠈⠒⠤⠤⠤⠒⠁ ⠰⣉⠆     ").style(Color::Rgb(86, 102, 130)),
             Line::from("         ⡔⢢   ⡔⢢         ").style(Color::Rgb(86, 102, 130)),
             Line::from("         ⠈⠁   ⠈⠁         ").style(Color::Rgb(86, 102, 130)),
-            Line::from(format!("{} {}", self.count, state.count)),
+            Line::from(""),
         ];
 
         lines.push(Line::from(vec![
@@ -101,28 +94,12 @@ impl Component for SplashScreen {
         &mut self,
         event: crossterm::event::KeyEvent,
         state: &Arc<Mutex<AppState>>,
-        tx: UnboundedSender<Message>,
+        _tx: UnboundedSender<Message>,
     ) -> anyhow::Result<()> {
         let mut state = state.lock().unwrap();
 
         if state.screen != Screen::Splash {
             return Ok(());
-        }
-
-        if let KeyCode::Char('c') = event.code {
-            self.increment()
-        }
-
-        if let KeyCode::Char('i') = event.code {
-            tx.send(Message::Increment).ok();
-        }
-
-        // if let KeyCode::Char('d') = event.code {
-        //     tx.send(Message::Decrement).ok();
-        // }
-
-        if let KeyCode::Char('d') = event.code {
-            tx.send(Message::Double).ok();
         }
 
         if let KeyCode::Char('j') = event.code {
