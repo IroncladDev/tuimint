@@ -2,6 +2,7 @@
 name = "tuimint"
 version = "0.1.0"
 edition = "2024"
+include = ["src/**/*", "assets/**/*", "Cargo.toml", "README*", "LICENSE*"]
 
 [dependencies]
 anyhow = "1.0.100"
@@ -17,5 +18,6 @@ fedimint-wallet-client = "0.9.1"
 futures = "0.3.31"
 rand = "0.8.5"
 ratatui = "0.30.0"
-serde = "1.0.228"
+ratatui-macros = "0.7.0"
+serde = { version = "1.0.228", features = ["derive"] }
 tokio = "1.48.0"

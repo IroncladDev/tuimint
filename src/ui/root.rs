@@ -12,7 +12,7 @@ impl Root {
         Self {
             children: vec![
                 Box::new(SplashScreen::new()),
-                Box::new(TutorialScreen {}),
+                Box::new(TutorialScreen::new()),
                 Box::new(JoinScreen {}),
                 Box::new(WalletsScreen {}),
                 Box::new(SettingsScreen {}),
